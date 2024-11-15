@@ -1,0 +1,529 @@
+---
+title: "Exploratory Factor Analysis Final Project" 
+author: "Kori Thompson, Erin Best, & Julia Flanagan" 
+date: "`r Sys.Date()`" 
+output:   
+  word_document: default   
+  pdf_document: default 
+editor_options:    
+  markdown:      
+    wrap: sentence 
+---
+
+## Exploratory Factor Analysis
+
+Exploratory Factor Analysis (EFA) is a statistical method that identifies factors, latent or unobserved variables, that explain the underlying structure in a larger group of observed variables.
+We understand the nature of factors by examining the variables with which factors have high factor loadings or correlations.
+EFA can be used to reduce data into a smaller set of summary variables or explore the theoretical structure of concepts unable to be directly measured or quantified.
+
+Researchers may use EFA to develop new scales, to reduce data dimensionality, to better understand relationships among variables (especially in large datasets), or even to help generate hypotheses for future work when the underlying structure is not well understood.
+While EFA is extensively used in psychological research, EFA can be used in other fields such as market research, educational assessment, healthcare and medical research.
+
+EFA comes from a family of Factor Analyses that includes Principal Component Analysis (PCA).
+Where EFA helps explain covariance between a set of observed variables, PCA explains total variance.
+
+Steps for Performing EFA in R:
+
+1.  Choose and load an appropriate dataset.
+2.  Clean your data.
+3.  Test your data to ensure it meets the assumptions of EFA.
+4.  Determine an appropriate number of factors.
+5.  Conduct EFA and interpret the factor loadings.
+6.  (Optional) Rotate factors to improve interpretation.
+7.  Assign meaning by examining the characteristics of highly loading variables for each factor.
+
+## Research Question
+
+Using EFA, we will attempt to answer to the following question: What are the factors that best summarize an individual’s personality?
+
+## Load Libraries
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)  
+
+library(tidyverse) 
+library(corrplot) # correlation plot 
+library(psych) # EFA functions 
+library(GPArotation) # factor rotation
+```
+
+## Load Data
+
+Data - BIG 5 PERSONALITY TEST
+
+This data set was obtained from <http://openpsychometrics.org/_rawdata/BIG5.zip>, which contains data collected through an interactive online personality test.
+The personality test uses the Big-Five Factor Markers from the International Personality Item Pool, developed in 1992 by Goldberg.
+
+The original data set contains 19,719 observations of 57 variables collected in 2012, of which, we used 5,000 observations.
+Seven of these variables are demographic characteristics.
+The other 50 variables are the likert-scale answers to the personality test questionnaire.
+
+Categorical:
+
+-   race: Chosen from a drop down menu.
+
+-   engnat: Response to "is English your native language?".
+
+-   gender: Chosen from a drop down menu.
+
+-   hand: "What hand do you use to write with?".
+
+-   source: How the participant came to the test.
+    Based on HTTP Referer.
+
+-   country: The participant's technical location.
+    ISO country code.
+
+Continuous:
+
+-   age: individuals reporting age \< 13 were not recorded
+
+Likert Scale:
+
+The following items were rated on a five point scale where 1=Disagree, 3=Neutral, 5=Agree (0=missed).
+All were presented on one page in the order E1, N2, A1, C1, O1, E2......
+
+-   E1 I am the life of the party.
+
+-   E2 I don't talk a lot.
+
+-   E3 I feel comfortable around people.
+
+-   E4 I keep in the background.
+
+-   E5 I start conversations.
+
+-   E6 I have little to say.
+
+-   E7 I talk to a lot of different people at parties.
+
+-   E8 I don't like to draw attention to myself.
+
+-   E9 I don't mind being the center of attention.
+
+-   E10 I am quiet around strangers.
+
+-   N1 I get stressed out easily.
+
+-   N2 I am relaxed most of the time.
+
+-   N3 I worry about things.
+
+-   N4 I seldom feel blue.
+
+-   N5 I am easily disturbed.
+
+-   N6 I get upset easily.
+
+-   N7 I change my mood a lot.
+
+-   N8 I have frequent mood swings.
+
+-   N9 I get irritated easily.
+
+-   N10 I often feel blue.
+
+-   A1 I feel little concern for others.
+
+-   A2 I am interested in people.
+
+-   A3 I insult people.
+
+-   A4 I sympathize with others' feelings.
+
+-   A5 I am not interested in other people's problems.
+
+-   A6 I have a soft heart.
+
+-   A7 I am not really interested in others.
+
+-   A8 I take time out for others.
+
+-   A9 I feel others' emotions.
+
+-   A10 I make people feel at ease.
+
+-   C1 I am always prepared.
+
+-   C2 I leave my belongings around.
+
+-   C3 I pay attention to details.
+
+-   C4 I make a mess of things.
+
+-   C5 I get chores done right away.
+
+-   C6 I often forget to put things back in their proper place.
+
+-   C7 I like order.
+
+-   C8 I shirk my duties.
+
+-   C9 I follow a schedule.
+
+-   C10 I am exacting in my work.
+
+-   O1 I have a rich vocabulary.
+
+-   O2 I have difficulty understanding abstract ideas.
+
+-   O3 I have a vivid imagination.
+
+-   O4 I am not interested in abstract ideas.
+
+-   O5 I have excellent ideas.
+
+-   O6 I do not have a good imagination.
+
+-   O7 I am quick to understand things.
+
+-   O8 I use difficult words.
+
+-   O9 I spend time reflecting on things.
+
+-   O10 I am full of ideas.
+
+```{r}
+dat <- read.csv("bigfive.csv") 
+head(dat)
+```
+
+## Explore and Prepare Data
+
+To perform EFA, we need data that is continuous, ordinal, or interval-ish.
+That is, we either want data like height or temperature that operates on a continuous scale, ordinal like ranked positions, or interval-ish like likert scale responses.
+In our dataset, we are going to focus on the likert scale responses so we can remove the first 7 demographic characteristics.
+
+```{r}
+dat <- dat[,8:57]   # remove first 7 columns of demographic data 
+```
+
+Ideally in EFA, there should be 5 to 20 samples per observed variable.
+In our dataset, we have 50 variables, and 5,000 observations, thus 100 observations per variable.
+Therefore, our data meets the size requirement.
+
+```{r}
+vars <- ncol(dat) # 50 variables vars  n <- nrow(dat) # 5,000 observations n 
+```
+
+As a matter of preference, we want to ensure that there are no missing values in our data.
+To do so, we recode missing values from 0 to NA.
+By doing so, we see that our data has no missing values.
+
+```{r}
+dat[dat == 0] <- NA # recode missing data as NA 
+sum(is.na(dat)) # count NAS
+```
+
+As we can see, our 50 variables are likert-scale values ranging from 1 to 5 where 1 is the label for Strongly Disagree and 5 is the label for Strongly Agree.
+
+```{r}
+summary(dat)
+```
+
+## Visualize Data
+
+While not required, a common preliminary step of EFA includes examining correlation matrices in order to gain insight on the underlying data structure.
+Specifically, the correlation matrix allows us to identify potential linear relationships as well as detecting any multicollinearity.
+To build a correlation matrix, we can utilize the corrplot() and cor() functions to visualize the correlation coefficients of a given dataset.
+Correlations range from -1 to 1 where -1 indicates negative correlation, 0 indicates no relation, and 1 indicates positive correlation.
+
+As we see in the graph below, there exists some level of linear relationships between some of variables in our dataset.
+For example, N5 seems to have a decent positive linear relationship with N9, potentially a negative relationship with E3, and no relationship with O3.
+While there appears to be some strong relationships between variables, we don't see a perfect correlation between any variables in our dataset.
+
+```{r}
+# Correlation matrix ordered with hierarchical clustering to sort similar variables together  
+
+corrplot(cor(dat), order = "hclust", tl.cex = .5) # tl.cex controls text label size
+```
+
+## Test Assumptions
+
+As mentioned, data used in EFA must be continuous, ordinal, or interval and the dataset must be sufficiently large, having 5 to 20 observations per observed variable.
+Additionally, the dataset must contain some correlation or factorability but no extreme multicollinearity.
+
+### Multicollinearity
+
+We saw in the correlation plot above that there appeared to be no extreme multicollinearity.
+To ensure this, we examined the values in the correlation matrix less those on the diagonal (these values represent a variable's correlation with itself).
+From our results below, we can see that there are no instances where two different variables have a correlation stronger than 0.9.
+
+```{r}
+corr.matrix <- cor(dat) # 50 x 50 correlation matrix 
+id.matrix <- diag(50) # 50 x 50 identity matrix 
+# subtract id matrix from corr matrix to remove variables correlations 
+# with themselves 
+check.matrix <- corr.matrix - id.matrix  
+which(abs(check.matrix) >= .9) # check for correlations < -0.9 or > 0.9
+```
+
+### Factorability
+
+The Kaiser-Meyer-Olkin (KMO) test is used to assess whether your data is suitable for Factor Analysis.
+The test measures the sampling adequacy of each variable in the model as well as for the model itself.
+The measure of sampling adequacy (MSA) is the proportion of variance among variables that might be a common variance.
+This essentially measures how widespread the correlations among variables are.
+The statistic has a value between 0 and 1 with statistics closer to 1 being extremely well suited for factor analysis and values closer to 0 indicate that there may not be common correlations between sets of variables.
+
+The KMO tells us that our dataset is well suited for factor analysis having an overall MSA of 0.91 and MSAs greater than or equal to 0.79 for each observed variable.
+
+```{r}
+KMO(cor(dat)) # Kaiser-Meyer-Olkin (KMO) test 
+```
+
+Bartlett’s test of sphericity essentially checks redundancy between variables allowing grouping into factors.
+This is done by comparing the observed correlation matrix to the identity matrix.
+The null hypothesis of the test is that the observed correlation matrix is the identity matrix, implying that the variables are not correlated.
+The alternative hypothesis is that the observed correlation matrix is not the identity matrix which implies correlation between the variables.
+
+Bartlett's test results in a p-value of approximately 0 so we reject the null hypothesis and conclude that there exists correlation between the variables in our dataset.
+
+```{r}
+cortest.bartlett(cor(dat),5000,diag = TRUE) # Bartlett's test of sphericity 
+```
+
+## Determine the Number of Factors to Use
+
+While the number of factors used could match the number of variables in the dataset, it is often a goal within EFA to reduce the number of factors utilized.
+The Cattell's Scree Plot is commonly used to determine the number of factors to retain.
+A scree plot displays the dataset's factors and their corresponding eigenvalues, which represent the amount of variance associated with each factor.
+The first factor will always account for the highest variance and, therefore will have the highest eigenvalue.
+The subsequent factors decrease resulting in an "elbow" shaped graph.
+The goal of the scree plot is to identify the number of factors *before* the curve flattens to be the number of factors used in the factor analysis.
+
+In the graph below, we see that the bend in the plot occurs around factor 6.
+We, therefore, need to extract 5 factors for our analysis.
+This may not come as a surprise since we are working with the Big Five Personality Test data which has five personality traits.
+
+```{r}
+scree(cor(dat), pc=FALSE) # check scree plot 
+```
+
+## Conduct Exploratory Factor Analysis
+
+Below we perform EFA on our dataset with 5 factors and no rotation.
+
+The psych package's fa() function provides an abundance of output to better understand the latent factors identified and the EFA model's performance.
+Since we are interested in better understanding the latent structures within our dataset, we will focus on the factor loadings, variance measures, and how these inform our interpretation of the latent factors.
+
+```{r}
+efa <- fa(cor(dat), nfactors = 5, n.obs = 5000, rotate = "none") 
+efa 
+```
+
+### Factor Loadings
+
+MR1,MR2,..., MR5: Factor loadings represent the strength of the relationship between an observed variable (i.e. E1, E2, etc.) and a latent factor, MR1 through MR5.
+These coefficient explain how much of the variation in our observed variables can be explained by latent factors.
+Factor loadings, like correlations, range from -1 to 1 where -1 indicates negative correlation, 0 indicates no relation, and 1 indicates positive correlation.
+The square of an individual factor loading is the percent of variance in the observed variable explained a latent factor.
+
+From our factor loadings below, we can see that variables appear to have stronger associations with certain variables but the delineation of factors with high loading variables is not clear.
+This model would benefit from a rotation.
+
+```{r}
+load <- data.frame(unclass(efa$loadings)) #df of factor loadings 
+load 
+```
+
+h2: Communality is a measure that represents the total variance of an observed variable explained by the factors.
+Communality is the row sum of the squared factor loading for each variable.
+In the case that there is a rotation, the communality is a row sum of the squared orthogonal factor loadings.
+A commonality closer to 1 indicates that a variable's variance is well explained by the factors.
+
+```{r}
+# calculate communality 
+load2 <- load^2 #df of squared factor loadings 
+h2 <- apply(load2, 1, sum) #sum squared factor loadings row wise  
+
+# compare calculation with model communality 
+loadings <- data.frame(h2,efa$communalities) %>% round(4)  
+head(loadings) 
+```
+
+u2: Uniqueness is a measure that represents how much of the total variance of an observed variable is not explained by the factors.
+Uniqueness is calculated as follows: 1 - h2.
+
+com: Complexity is Hoffman's index of complexity which communicates how many factors an observed variable loads.
+Complexity is calculated using the following formula: $\frac{(\sum \lambda_i^2)^2}{\sum \lambda_i^4}$ or $\frac{(h_2)^2}{\sum \lambda_i^4}$.
+I.e., a score of 1 indicates that the variable loads with a single factor, 2 means that the variable evenly loads on two factors, and so on.
+
+```{r}
+loadings <- data.frame(efa$communalities,efa$uniquenesses,efa$complexity) %>% round(4) 
+head(loadings)
+```
+
+### Variance Measures
+
+SS loadings: Sum of squared loadings is the column sum of the squared loadings for each factor, representing the total variation accounted for by each factor.
+These values are also known as the eigenvalues.
+
+From these loadings, we can see that the first factor captures the most variation, followed by the second.
+Our fifth factor explains the least variation of the group.
+
+```{r}
+# calculate sum of squared loadings 
+ssLoad <- apply(load2, 2, sum) #sum factor loadings column wise   
+
+# compare calculation with model ss loadings 
+ssLoad 
+efa$Vaccounted[1,]
+```
+
+Proportion Var: Proportion of variance is the sum of squared loadings for each factor, eigenvalue, divided by the total variance in the model, equal to the number of variables or 50.
+
+As seen above, the first factor explains the highest proportion of total variance at 15%.
+
+```{r}
+# calculate proportion of variance 
+varP <- ssLoad/vars  
+
+# compare calculation with model variance proportion 
+varP 
+efa$Vaccounted[2,]
+```
+
+Cumulative Var: Cumulative variance is the cumulative amount of variance explained in the model.
+
+Proportion Explained: Proportion of variance explained is the proportion of variance explained by a single factor over the total variance explained in the model.
+
+Cumulative Proportion: Cumulative proportion of variance explained in the model.
+
+From the cumulative variance figure below, we can see that these five factor only explain 40% of the total variance in the model.
+
+```{r}
+efa$Vaccounted
+```
+
+## Rotate Factors
+
+There are infinitely many solutions that explain the data equally and the factor loadings produced by performing EFA are only one solution.
+Since factor loadings are used to determine the strength of the correlation of each variable to factor, having only one solution can be problematic.
+One problem is that each factor may contain a high number of middling loadings for the variables.
+This makes it difficult to determine which factors are most strongly correlated with it.
+To make the factor loadings easier to interpret, we want to create a large contrast between high and low loadings.
+To do this a method know as factor rotation is often used.
+
+The goal of factor rotation is produce a set of high loadings and many low loadings for each factor.
+Consider a scatter plot of the two factors, X and Y, with each variable plotted using it's loadings for each factor.
+The axes are rotated around the plotted variable, to increase and decrease the X and Y values change.
+This results in variables having a high loading for one factor and a low loading for the other.
+This concept is expanded out to use more dimensions as the number of factors increase.
+
+There are two types of rotation: oblique rotation and orthogonal rotation.
+With oblique rotation correlation among factors is allowed.
+Orthogonal rotation uses the assumption that there is no correlation between the factors.
+There are three methods of oblique rotation: promax, oblimin, and direct quartimin.
+Orthogonal rotation also has 3 methods of rotating axes: varmax, equimax, quartimax.
+
+Below we used an oblique rotation to rotate the factor loadings and create our final results.
+
+```{r}
+efa.rot <- fa(cor(dat), nfactors = 5, n.obs = 5000, rotate = "promax")  
+efa.rot  
+
+```
+
+Below we can visually compare the factor loadings for factors 1 and 2 before and after rotating the factor loadings.
+Ideally, we would like variables that have high factor loadings with one factor and low loadings with the other or low loadings for both factors.
+In the unrotated plot, we see a lot of middling loadings, where variables have a medium relation to both factors.
+In the plot of the rotated factors, we see a group of variables with a strong relationship with only factor 1, a group that only has a strong relationship with factor 2, and then a group a variables without a strong relationship to either factor.
+
+```{r}
+# plot of non-rotated factor 1 and factor 2 
+plot(efa$loadings[,1], efa$loadings[,2], xlim = c(-0.5, 1), ylim = c(-0.5, 1), 
+      xlab = "Factor 1", ylab = "Factor 2", main = "No Rotation") 
+abline(h = 0, v = 0)  
+
+# plot of rotated factor 1 and factor 2 
+plot(efa.rot$loadings[,1], efa.rot$loadings[,2], xlim = c(-0.5, 1), ylim = c(-0.5, 1),           xlab = "Factor 1", ylab = "Factor 2", main = "Promax Rotation") 
+abline(h = 0, v = 0) 
+```
+
+## Conclusion
+
+As we can see from the rotated factor loadings, there are stronger factor loadings between variables and factors.
+Therefore, we can examine the variables with which factors have high loadings to understand the factors themselves.
+
+```{r}
+load.rot <- data.frame(unclass(efa.rot$loadings)) #df of factor loadings 
+load.rot
+```
+
+The first 10 variables, E1 through E10, appear to have high factor loadings with factor one, MR1.
+Reviewing those questions, we can see that those questions determine a person's extroversion, or tendency towards socialization and activity.
+
+```{r}
+# column name of column with the highest abs factor loadings 
+colnames(load.rot[1:10,])[apply(abs(load[1:10,]),1,which.max)]  
+```
+
+The second set of 10 variables, N1 through N10, appear to have high factor loadings with factor two, MR2.
+Reviewing those questions, we can see that those questions determine a person's emotional stability of moodiness.
+This is characterized in the Big Five as neuroticism.
+
+```{r}
+# column name of column with the highest abs factor loadings 
+colnames(load.rot[11:20,])[apply(abs(load[11:20,]),1,which.max)]  
+```
+
+The third set of 10 variables, A1 through A10, appear to have high factor loadings with factor three, MR3.
+Reviewing those questions, we can see that those questions determine a person's level of empathy and consideration towards others.
+This is characterized in the Big Five as agreeableness.
+
+```{r}
+# column name of column with the highest abs factor loadings 
+colnames(load.rot[21:30,])[apply(abs(load[21:30,]),1,which.max)]  
+```
+
+The fourth set of 10 variables, C1 through C10, appear to have high factor loadings with factor four, MR4.
+Reviewing those questions, we can see that those questions determine a person's level of impulsiveness and consideration toward future goals.
+This is characterized in the Big Five as conscientiousness.
+
+```{r}
+# column name of column with the highest abs factor loadings 
+colnames(load.rot[31:40,])[apply(abs(load[31:40,]),1,which.max)]  
+```
+
+The fifth set of 10 variables, O1 through O10, appear to have high factor loadings with factor five, MR5.
+Reviewing those questions, we can see that those questions determine a person's level of creativity and openness to new ideas.
+This is characterized in the Big Five as openness.
+
+```{r}
+# column name of column with the highest abs factor loadings 
+colnames(load.rot[41:50,])[apply(abs(load[41:50,]),1,which.max)]  
+```
+
+According to our findings, the five factors that best summarize an individual’s personality are extroversion, neuroticism, agreeableness, conscientiousness, and openness.
+Our results perfectly align with the structure of the Big Five Personality Test because the Big Five was developed using factor analysis!
+
+## Resources
+
+Big Five Personality Test, Open-Source Psychometrics Project, <https://openpsychometrics.org/tests/IPIP-BFFM/>
+
+Columbia Mailman School of Public Health, Exploratory Factor Analysis, <https://www.publichealth.columbia.edu/research/population-health-methods/exploratory-factor-analysis>
+
+Exploratory factor analysis, Wikiversity, <https://en.wikiversity.org/wiki/Exploratory_factor_analysis>
+
+Watkins, M. W.
+(2018).
+Exploratory Factor Analysis: A Guide to Best Practice.
+Journal of Black Psychology, 44(3), 219-246.
+<https://doi.org/10.1177/0095798418771807>
+
+Intro – Basic Exploratory Factor Analysis, Quantitative Development Systems Methodological Core, Penn State University, <https://quantdev.ssri.psu.edu/tutorials/intro-basic-exploratory-factor-analysis>
+
+Exploratory Factor Analysis in R: A Step-by-Step Guide, Medium, <https://data03.medium.com/exploratory-factor-analysis-efa-in-r-a-step-by-step-guide-655d37309d80>
+
+Exploratory Factor Analysis, Phil Murphy<https://rpubs.com/pjmurphy/758265>
+
+Factor Analysis with an Example, Statistics by Jim, <https://statisticsbyjim.com/basics/factor-analysis/#more-17004>
+
+Factor Analysis Using R, A. Alexander Beaujean, Baylor University, <https://openpublishing.library.umass.edu/pare/article/1433/galley/1384/view/>
+
+Factor Analysis with the psych package, Michael Clark, <https://m-clark.github.io/posts/2020-04-10-psych-explained/>
+
+Practical Considerations for Using Exploratory Factor Analysis in Educational Research - Amy S. Beavers, John W. Lounsbury, Jennifer K. Richards, Schuyler W. Huck, Gary J. Skolits, and Shelley L. Esquivel The University of Tennessee, <https://openpublishing.library.umass.edu/pare/article/1421/galley/1372/view/>
+
+R Tutorial: Exploratory Factor Analysis (EFA), <https://www.youtube.com/watch?v=VCpVcXf_wOk>
